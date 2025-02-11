@@ -1,0 +1,342 @@
+{
+	"log": {
+		"disabled": false,
+		"level": "info",
+		"timestamp": true
+	},
+
+	"experimental": {
+		"clash_api": {
+			"external_controller": "0.0.0.0:9095",
+			"external_ui": "/etc/sing-box/ui",
+			"secret": "",
+			"external_ui_download_url": "https://ghfast.top/https://github.com/MetaCubeX/metacubexd/archive/refs/heads/gh-pages.zip",
+			"external_ui_download_detour": "🌍全球直连",
+			"default_mode": "rule"
+		},
+		"cache_file": {
+			"enabled": true,
+			"path": "/etc/sing-box/cache.db",
+			"store_fakeip": false
+		}
+	},
+
+	"dns": {
+		"servers": [{
+			"tag": "dns_direct",
+			"type": "udp",
+			"server": "223.5.5.5",
+			"detour": "🌍全球直连"
+		},
+			{
+				"tag": "dns_proxy",
+				"type": "https",
+				"server": "8.8.8.8",
+				"detour": "🚀节点选择"
+			}
+		],
+		"rules": [{
+			"outbound": "any",
+			"server": "dns_direct",
+			"disable_cache": true
+		},
+			{
+				"clash_mode": "Direct",
+				"server": "dns_direct"
+			},
+			{
+				"clash_mode": "Global",
+				"server": "dns_proxy"
+			},
+			{
+				"rule_set": "geosite-cn",
+				"action": "route",
+				"server": "dns_direct"
+			},
+			{
+				"rule_set": "geosite-geolocation-!cn",
+				"server": "dns_proxy"
+			}
+		],
+		"final": "dns_proxy",
+		"strategy": "prefer_ipv4"
+	},
+	"inbounds": [{
+		"type": "tproxy",
+		"tag": "tproxy-in",
+		"listen": "::",
+		"listen_port": 7895,
+		"sniff": true,
+		"sniff_override_destination": false
+	},
+		{
+			"type": "mixed",
+			"listen": "::",
+			"listen_port": 1080,
+			"sniff": true,
+			"users": []
+		}
+	],
+
+	"outbounds": [{
+		"tag": "🚀节点选择",
+		"type": "selector",
+		"outbounds": ["🇯🇵日本节点", "🇺🇸美国节点", "🛠手动切换", "🔀自动选择", "🌍全球直连"]
+	},
+		{
+			"tag": "🎥YouTube",
+			"type": "selector",
+			"outbounds": ["🚀节点选择", "🔀自动选择", "🇯🇵日本节点", "🇺🇸美国节点", "🛠手动切换"]
+		},
+		{
+			"tag": "🤖OpenAI",
+			"type": "selector",
+			"outbounds": ["🚀节点选择", "🔀自动选择", "🇯🇵日本节点", "🇺🇸美国节点", "🛠手动切换"]
+		},
+		{
+			"tag": "🌐Google",
+			"type": "selector",
+			"outbounds": ["🇺🇸美国自动", "🚀节点选择", "🔀自动选择", "🇯🇵日本节点", "🇺🇸美国节点", "🛠手动切换"]
+		},
+		{
+			"tag": "💻Microsoft",
+			"type": "selector",
+			"outbounds": ["🚀节点选择", "🔀自动选择", "🇯🇵日本节点", "🇺🇸美国节点", "🌍全球直连"]
+		},
+		{
+			"tag": "🎥TikTok",
+			"type": "selector",
+			"outbounds": ["🚀节点选择", "🔀自动选择", "🇯🇵日本节点", "🇺🇸美国节点", "🛠手动切换"]
+		},
+		{
+			"tag": "🎥Netflix",
+			"type": "selector",
+			"outbounds": ["🚀节点选择", "🔀自动选择", "🇯🇵日本节点", "🇺🇸美国节点", "🛠手动切换"]
+		},
+		{
+			"tag": "🐟漏网之鱼",
+			"type": "selector",
+			"outbounds": ["🚀节点选择", "🌍全球直连"]
+		},
+		{
+			"tag": "🛠手动切换",
+			"type": "selector",
+			"outbounds": ["{all}"]
+		},
+		{
+			"tag": "🇯🇵日本节点",
+			"type": "selector",
+			"outbounds": ["{include:JP|jp|日本|Japan|🇯🇵}"]
+		},
+		{
+			"tag": "🇺🇸美国节点",
+			"type": "selector",
+			"outbounds": ["{include:US|us|美国|United States|🇺🇸}"]
+		},
+		{
+			"tag": "🇺🇸美国自动",
+			"type": "urltest",
+			"outbounds": ["{include:US|us|美国|United States|🇺🇸}"],
+			"url": "http://www.gstatic.com/generate_204",
+			"interval": "10m",
+			"tolerance": 50
+		},
+		{
+			"tag": "🔀自动选择",
+			"type": "urltest",
+			"outbounds": ["{all}"],
+			"url": "http://www.gstatic.com/generate_204",
+			"interval": "10m",
+			"tolerance": 50
+		},
+		{
+			"tag": "GLOBAL",
+			"type": "selector",
+			"outbounds": ["{all}"]
+		},
+		{
+			"tag": "🌍全球直连",
+			"type": "direct"
+		}
+	],
+
+	"route": {
+		"auto_detect_interface": true,
+		"default_mark": 255,
+		"final": "🐟漏网之鱼",
+		"rules": [{
+			"action": "sniff"
+		},
+			{
+				"protocol": "dns",
+				"action": "hijack-dns"
+			},
+			{
+				"clash_mode": "direct",
+				"outbound": "🌍全球直连"
+			},
+			{
+				"clash_mode": "global",
+				"outbound": "GLOBAL"
+			},
+			{
+				"ip_cidr": [
+					"192.168.0.0/16",
+					"10.8.0.0/24",
+					"fd00:1080::/64"
+				],
+				"outbound": "🏠回家"
+			},
+			{
+				"port": [
+					2200
+				],
+				"outbound": "🌍全球直连"
+			},
+			{
+				"domain_keyword": ["adobe"],
+				"action": "reject"
+			},
+			{
+				"domain_keyword": ["ecd.io", "iccb.cc"],
+				"outbound": "🌍全球直连"
+			},
+			{
+				"rule_set": "geosite-private",
+				"outbound": "🌍全球直连"
+			},
+			{
+				"rule_set": "geosite-chat",
+				"outbound": "🤖OpenAI"
+			},
+			{
+				"rule_set": "geosite-youtube",
+				"outbound": "🎥YouTube"
+			},
+			{
+				"rule_set": ["geosite-google", "geoip-google"],
+				"outbound": "🌐Google"
+			},
+			{
+				"rule_set": "geosite-tiktok",
+				"outbound": "🎥TikTok"
+			},
+			{
+				"rule_set": ["geosite-netflix", "geoip-netflix"],
+				"outbound": "🎥Netflix"
+			},
+			{
+				"rule_set": "geosite-microsoft",
+				"outbound": "💻Microsoft"
+			},
+			{
+				"rule_set": "geosite-geolocation-!cn",
+				"outbound": "🚀节点选择"
+			},
+			{
+				"rule_set": ["geoip-cn", "geosite-cn"],
+				"outbound": "🌍全球直连"
+			}
+		],
+
+		"rule_set": [{
+			"tag": "geosite-chat",
+			"type": "remote",
+			"format": "binary",
+			"url": "https://ghfast.top/https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/category-ai-chat-!cn.srs",
+			"download_detour": "🌍全球直连"
+		},
+			{
+				"tag": "geosite-youtube",
+				"type": "remote",
+				"format": "binary",
+				"url": "https://ghfast.top/https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/youtube.srs",
+				"download_detour": "🌍全球直连"
+			},
+			{
+				"tag": "geosite-google",
+				"type": "remote",
+				"format": "binary",
+				"url": "https://ghfast.top/https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/google.srs",
+				"download_detour": "🌍全球直连"
+			},
+			{
+				"tag": "geosite-tiktok",
+				"type": "remote",
+				"format": "binary",
+				"url": "https://ghfast.top/https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/tiktok.srs",
+				"download_detour": "🌍全球直连"
+			},
+			{
+				"tag": "geosite-netflix",
+				"type": "remote",
+				"format": "binary",
+				"url": "https://ghfast.top/https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/netflix.srs",
+				"download_detour": "🌍全球直连"
+			},
+			{
+				"tag": "geosite-microsoft",
+				"type": "remote",
+				"format": "binary",
+				"url": "https://ghfast.top/https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/microsoft.srs",
+				"download_detour": "🌍全球直连"
+			},
+			{
+				"tag": "geosite-geolocation-!cn",
+				"type": "remote",
+				"format": "binary",
+				"url": "https://ghfast.top/https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/geolocation-!cn.srs",
+				"download_detour": "🌍全球直连"
+			},
+			{
+				"tag": "geosite-cn",
+				"type": "remote",
+				"format": "binary",
+				"url": "https://ghfast.top/https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/cn.srs",
+				"download_detour": "🌍全球直连"
+			},
+			{
+				"tag": "geosite-private",
+				"type": "remote",
+				"format": "binary",
+				"url": "https://ghfast.top/https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/private.srs",
+				"download_detour": "🌍全球直连"
+			},
+			{
+				"tag": "geoip-google",
+				"type": "remote",
+				"format": "binary",
+				"url": "https://ghfast.top/https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geoip/google.srs",
+				"download_detour": "🌍全球直连"
+			},
+			{
+				"tag": "geoip-netflix",
+				"type": "remote",
+				"format": "binary",
+				"url": "https://ghfast.top/https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geoip/netflix.srs",
+				"download_detour": "🌍全球直连"
+			},
+			{
+				"tag": "geoip-apple",
+				"type": "remote",
+				"format": "binary",
+				"url": "https://ghfast.top/https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo-lite/geoip/apple.srs",
+				"download_detour": "🌍全球直连"
+			},
+			{
+				"tag": "geoip-cn",
+				"type": "remote",
+				"format": "binary",
+				"url": "https://ghfast.top/https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geoip/cn.srs",
+				"download_detour": "🌍全球直连"
+			},
+			{
+				"tag": "geoip-private",
+				"type": "remote",
+				"format": "binary",
+				"url": "https://ghfast.top/https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geoip/private.srs",
+				"download_detour": "🌍全球直连"
+			}
+		]
+	}
+}
