@@ -1,11 +1,12 @@
 #!/bin/sh
 
 # depend on: curl nft ip ping netstat jq coreutils-base64
-# Configuration parameters
+# github代理必需以'/'结尾,并且可能会失效,需要找可用的代理
+GITHUB_PROXY="https://ghfast.top/"
 # xray/v2ray url格式节点订阅链接
 SUBSCRIBE_URL="http://YOUR_SERVER/proxy/node"
 # sing-box 配置模板文件
-TEMPLATE_URL="http://YOUR_SERVER/proxy/singbox_template.json"
+TEMPLATE_URL="${GITHUB_PROXY}https://raw.githubusercontent.com/jinhill/sing-box-ctl/refs/heads/main/openwrt/singbox_template.json"
 SING_BOX_BIN="/usr/bin/sing-box"
 CONFIG_DIR="/etc/sing-box"
 # 防火墙规则
@@ -353,12 +354,15 @@ stop_service() {
 }
 
 update() {
-	local_ver=$(${SING_BOX_BIN} version | head -n 1 | sed -n 's/.*version \([-0-9.a-zA-Z]\+\).*/\1/p')
-	latest_ver=$(curl -s https://api.github.com/repos/SagerNet/sing-box/tags | jq -r '.[0].name' | sed 's/^v//')
+	local_ver="0"
+	if [ -f "${SING_BOX_BIN}" ]; then
+		local_ver=$(${SING_BOX_BIN} version | head -n 1 | sed -n 's/.*version \([-0-9.a-zA-Z]\+\).*/\1/p')
+	fi
+	latest_ver=$(curl -s "${GITHUB_PROXY}https://api.github.com/repos/SagerNet/sing-box/tags" | jq -r '.[0].name' | sed 's/^v//')
 	if [ "$latest_ver" != "$local_ver" ]; then
 		log "New version available: $latest_ver"
 		log "Start downloading..."
-		latest_url="https://github.com/SagerNet/sing-box/releases/download/v${latest_ver}/sing-box-${latest_ver}-linux-amd64.tar.gz"
+		latest_url="${GITHUB_PROXY}https://github.com/SagerNet/sing-box/releases/download/v${latest_ver}/sing-box-${latest_ver}-linux-amd64.tar.gz"
 		pkg_file="/tmp/${latest_url##*/}"
 		download "$latest_url" "${pkg_file}" || handle_error "Failed to download latest package"
 		tar -xzf "${pkg_file}" -C /tmp
