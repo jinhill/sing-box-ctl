@@ -1,12 +1,9 @@
 #!/bin/sh
-
 # depend on: curl nft ip ping netstat jq coreutils-base64
-# github代理必需以'/'结尾,并且可能会失效,需要找可用的代理
-GITHUB_PROXY="https://ghfast.top/"
 # xray/v2ray url格式节点订阅链接
-SUBSCRIBE_URL="http://YOUR_SERVER/proxy/node"
+SUBSCRIBE_URL=""
 # sing-box 配置模板文件
-TEMPLATE_URL="${GITHUB_PROXY}https://raw.githubusercontent.com/jinhill/sing-box-ctl/refs/heads/main/openwrt/singbox_template.json"
+TEMPLATE_URL="https://raw.githubusercontent.com/jinhill/sing-box-ctl/refs/heads/main/openwrt/singbox_template.json"
 SING_BOX_BIN="/usr/bin/sing-box"
 CONFIG_DIR="/etc/sing-box"
 # 防火墙规则
@@ -15,7 +12,7 @@ CONFIG_FILE="${CONFIG_DIR}/config.json"
 TPROXY_PORT=7895  # sing-box tproxy port
 # 代理流量标记
 PROXY_MARK=1
-# 直接出站流量标记 (对应 sing-box 配置中的 outbound.routing_mark 或 route.default_mark)
+# 直接出站流量标记 (sing-box配置中的route.default_mark或outbound.routing_mark)
 OUTPUT_MARK=255
 PROXY_ROUTE_TABLE=100
 # 统计
@@ -34,8 +31,21 @@ handle_error() {
 	exit "${2:-1}"
 }
 
-# Trap interrupt signals for clear_fw_route
-trap 'handle_error "Script interrupted"' INT TERM
+# update or add any variable in this script
+# $1: var name, $2: value
+update_variable() {
+	key="$1"
+	value=$(printf '%s' "$2" | sed 's/[&/\]/\\&/g')
+	# Check if the variable exists in the script
+	if grep -q "^${key}=" "$0"; then
+		# Variable exists, update it
+		sed -i "s/^${key}=.*/${key}=\"${value}\"/" "$0"
+	else
+		# Variable does not exist, append it after the shebang line
+		sed -i "1 a ${key}=\"${value}\"" "$0"
+	fi
+	eval "$1=$2"
+}
 
 # Check if commands exist
 # $1:command array list
@@ -192,6 +202,11 @@ append_outbounds() {
 }
 
 update_subscribe() {
+	if [ -z "${SUBSCRIBE_URL}" ]; then
+		printf "Enter your subscribe URL (supports xray/v2ray format): "
+		read sub_url
+		update_variable "SUBSCRIBE_URL" "${sub_url}"
+	fi
 	mkdir -p ${CONFIG_DIR}
 	cp -f "$CONFIG_FILE" "${CONFIG_FILE}.bak"
 	subscribe_file="/tmp/${SUBSCRIBE_URL##*/}"
@@ -207,9 +222,8 @@ update_subscribe() {
 }
 
 # 清除规则
-clear_fw_route() {
+clear_proxy_rule() {
 	nft list ruleset | grep -q "sing-box" && nft flush table inet sing-box > /dev/null 2>&1
-	rm -f /etc/nftables.d/99-singbox.nft
 	ip route del local default table $PROXY_ROUTE_TABLE > /dev/null 2>&1
 	ip rule del fwmark $PROXY_MARK table $PROXY_ROUTE_TABLE > /dev/null 2>&1
 	ip -6 route del local default table $PROXY_ROUTE_TABLE > /dev/null 2>&1
@@ -217,13 +231,14 @@ clear_fw_route() {
 }
 
 # 设置新规则
-setup_fw_route() {
+setup_proxy_rule() {
 	ip route add local default dev lo table $PROXY_ROUTE_TABLE
 	ip rule add fwmark $PROXY_MARK table $PROXY_ROUTE_TABLE
 	ip -6 route add local default dev lo table $PROXY_ROUTE_TABLE
 	ip -6 rule add fwmark $PROXY_MARK table $PROXY_ROUTE_TABLE
-	[ -d "${RULESET_FILE%/*}" ] || mkdir -p "${RULESET_FILE%/*}"
-	cat > "${RULESET_FILE}" << EOF
+	if [ ! -f "${RULESET_FILE}" ]; then
+		[ -d "${RULESET_FILE%/*}" ] || mkdir -p "${RULESET_FILE%/*}"
+		cat > "${RULESET_FILE}" << EOF
 #!/usr/sbin/nft -f
 table inet sing-box {
     # IPv4 和 IPv6 保留地址
@@ -307,9 +322,10 @@ table inet sing-box {
     }
 }
 EOF
-	# 应用防火墙规则
-	if ! nft -f "${RULESET_FILE}"; then
-		handle_error "Failed to apply firewall rules"
+		# 应用防火墙规则
+		if ! nft -f "${RULESET_FILE}"; then
+			handle_error "Failed to apply firewall rules"
+		fi
 	fi
 }
 
@@ -334,8 +350,8 @@ start_service() {
 
 	sleep 2
 	if pgrep "sing-box" > /dev/null; then
-		clear_fw_route
-		setup_fw_route
+		clear_proxy_rule
+		setup_proxy_rule
 		log "sing-box started successfully in TProxy mode"
 	else
 		handle_error "Failed to start sing-box, check the logs"
@@ -349,7 +365,7 @@ stop_service() {
 	else
 		log "No running sing-box service found"
 	fi
-	clear_fw_route
+	clear_proxy_rule
 	log "Stopped sing-box and cleaned up"
 }
 
@@ -358,11 +374,11 @@ update() {
 	if [ -f "${SING_BOX_BIN}" ]; then
 		local_ver=$(${SING_BOX_BIN} version | head -n 1 | sed -n 's/.*version \([-0-9.a-zA-Z]\+\).*/\1/p')
 	fi
-	latest_ver=$(curl -s "${GITHUB_PROXY}https://api.github.com/repos/SagerNet/sing-box/tags" | jq -r '.[0].name' | sed 's/^v//')
+	latest_ver=$(curl -s "https://api.github.com/repos/SagerNet/sing-box/tags" | jq -r '.[0].name' | sed 's/^v//')
 	if [ "$latest_ver" != "$local_ver" ]; then
 		log "New version available: $latest_ver"
 		log "Start downloading..."
-		latest_url="${GITHUB_PROXY}https://github.com/SagerNet/sing-box/releases/download/v${latest_ver}/sing-box-${latest_ver}-linux-amd64.tar.gz"
+		latest_url="https://github.com/SagerNet/sing-box/releases/download/v${latest_ver}/sing-box-${latest_ver}-linux-amd64.tar.gz"
 		pkg_file="/tmp/${latest_url##*/}"
 		download "$latest_url" "${pkg_file}" || handle_error "Failed to download latest package"
 		tar -xzf "${pkg_file}" -C /tmp

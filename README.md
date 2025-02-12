@@ -11,12 +11,11 @@ chmod +x /etc/init.d/singbox
 mv singbox-ctl.sh /usr/bin/
 chmod +x /usr/bin/singbox-ctl.sh
 
-# 下载最新版本sing-box
-# /usr/bin/singbox-ctl.sh中的GITHUB_PROXY代理面临失败的问题，需要自己找可用的代理
+# 下载最新版本sing-box,默认从github下载
+# 如果没有代理环境需要手动下载sing-box到/usr/bin/sing-box
 /etc/init.d/singbox update
 
-# 根据订阅链接生成sing-box配置文件
-# 修改/usr/bin/singbox-ctl.sh中SUBSCRIBE_URL为自己的订阅链接
+# 根据订阅链接生成sing-box配置文件，首次运行根据提示输入自己的订阅链接
 singbox-ctl.sh sub
 
 # 启动sing-box服务
