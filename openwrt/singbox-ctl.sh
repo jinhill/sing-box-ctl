@@ -201,11 +201,13 @@ append_outbounds() {
 	patch_outbound_filter "$3"
 }
 
+# $1:1-need to change url, else-do not change
 update_subscribe() {
-	if [ -z "${SUBSCRIBE_URL}" ]; then
+	echo "Current subscribe URL: [${SUBSCRIBE_URL}]"
+	if [ -z "${SUBSCRIBE_URL}" ] || [ "$1" = "1" ]; then
 		printf "Enter your subscribe URL (supports xray/v2ray format): "
 		read sub_url
-		update_variable "SUBSCRIBE_URL" "${sub_url}"
+		[ -n "${sub_url}" ] && update_variable "SUBSCRIBE_URL" "${sub_url}"
 	fi
 	mkdir -p ${CONFIG_DIR}
 	cp -f "$CONFIG_FILE" "${CONFIG_FILE}.bak"
@@ -213,8 +215,8 @@ update_subscribe() {
 	template_file="/tmp/${TEMPLATE_URL##*/}"
 	cp "$CONFIG_FILE" "${CONFIG_FILE}.bak"
 	log "Start downloading config template and subscribe files..."
-	download "$TEMPLATE_URL" "$template_file" || handle_error "Failed to download configuration file after 3 retries"
-	download "$SUBSCRIBE_URL" "$subscribe_file" || handle_error "Failed to download configuration file after 3 retries"
+	download "$TEMPLATE_URL" "$template_file" || handle_error "Failed to download config template"
+	download "$SUBSCRIBE_URL" "$subscribe_file" || handle_error "Failed to download subscribe file"
 	base64 -d "$subscribe_file" | tr -d '\r' > "${subscribe_file}.tmp" && mv "${subscribe_file}.tmp" "$subscribe_file"
 	log "Start generating config files..."
 	append_outbounds "$subscribe_file" "$template_file" "$CONFIG_FILE"
@@ -231,12 +233,15 @@ clear_proxy_rule() {
 }
 
 # 设置新规则
+# $1:0-do not apply nft rules(firewall has been applied),1-force to apply
 setup_proxy_rule() {
+	need_apply_nft="$1"
 	ip route add local default dev lo table $PROXY_ROUTE_TABLE
 	ip rule add fwmark $PROXY_MARK table $PROXY_ROUTE_TABLE
 	ip -6 route add local default dev lo table $PROXY_ROUTE_TABLE
 	ip -6 rule add fwmark $PROXY_MARK table $PROXY_ROUTE_TABLE
 	if [ ! -f "${RULESET_FILE}" ]; then
+		need_apply_nft=1
 		[ -d "${RULESET_FILE%/*}" ] || mkdir -p "${RULESET_FILE%/*}"
 		cat > "${RULESET_FILE}" << EOF
 #!/usr/sbin/nft -f
@@ -271,6 +276,12 @@ table inet sing-box {
             ff00::/8            # * 多播地址
         }
     }
+	
+    # 绕过保留地址流量
+    chain bypass_reserved {
+        meta nfproto ipv4 ip daddr @RESERVED_IPSET $RULE_COUNTER return comment "Bypass: IPv4 Reserved Address"
+        meta nfproto ipv6 ip6 daddr @RESERVED_IPSET_V6 $RULE_COUNTER return comment "Bypass: IPv6 Reserved Address"
+    }
 
     # 局域网透明代理
     chain prerouting {
@@ -279,16 +290,13 @@ table inet sing-box {
         # 绕过应答流量
         ct direction reply $RULE_COUNTER accept comment "Optimize: Reply Packets"
 
-        # 优化已经建立的 TCP 透明代理连接；使用系统记录的Socket，将流量直接送入协议栈
-        # openwrt 不支持
-        # meta l4proto tcp socket transparent 1 $RULE_COUNTER meta mark set $PROXY_MARK accept comment "Optimize: Just re-route established TCP proxy connections"
-
         # 劫持所有 DNS；DNS 请求比较多，TProxy 成本高，不建议使用；建议直接开一个 DNS-INBOUND
         udp dport 53 $RULE_COUNTER tproxy to :$TPROXY_PORT meta mark set $PROXY_MARK accept comment "Proxy: DNS(UDP) Hijack"
+		# 屏蔽http3 quic
+		udp dport { 80, 443 } reject comment "Reject http3 quic"
 
         # 绕过发往保留地址的流量
-        meta nfproto ipv4 ip daddr @RESERVED_IPSET $RULE_COUNTER accept comment "Bypass: IPv4 Reserved Address"
-        meta nfproto ipv6 ip6 daddr @RESERVED_IPSET_V6 $RULE_COUNTER accept comment "Bypass: IPv6 Reserved Address"
+        jump bypass_reserved
 
         # 绕过发往本机地址的流量 (如果保留地址包含了所有本机接口，可以忽略此规则)
         # fib daddr type local $RULE_COUNTER accept comment "Bypass: Local Address"
@@ -311,8 +319,7 @@ table inet sing-box {
         udp dport 53 $RULE_COUNTER meta mark set $PROXY_MARK accept comment "Re-route: DNS(UDP) Output"
 
         # 绕过发往保留地址的流量
-        meta nfproto ipv4 ip daddr @RESERVED_IPSET $RULE_COUNTER accept comment "Bypass: IPv4 Reserved Address"
-        meta nfproto ipv6 ip6 daddr @RESERVED_IPSET_V6 $RULE_COUNTER accept comment "Bypass: IPv6 Reserved Address"
+        jump bypass_reserved
 
         # 绕过发往本机地址的流量 (如果保留地址包含了所有本机接口，可以忽略此规则)
         # fib daddr type local $RULE_COUNTER accept comment "Bypass: Local Address"
@@ -322,14 +329,15 @@ table inet sing-box {
     }
 }
 EOF
-		# 应用防火墙规则
-		if ! nft -f "${RULESET_FILE}"; then
-			handle_error "Failed to apply firewall rules"
-		fi
+	fi
+	# 应用防火墙规则
+	if [ "$need_apply_nft" != "0" ]; then
+		nft -f "${RULESET_FILE}"
 	fi
 }
 
 # Start the service
+# $1:0-do not apply nft,1-force to apply
 start_service() {
 	check_commands "curl nft ip ping netstat jq base64"
 	check_network
@@ -351,7 +359,7 @@ start_service() {
 	sleep 2
 	if pgrep "sing-box" > /dev/null; then
 		clear_proxy_rule
-		setup_proxy_rule
+		setup_proxy_rule "$1"
 		log "sing-box started successfully in TProxy mode"
 	else
 		handle_error "Failed to start sing-box, check the logs"
@@ -386,6 +394,7 @@ update() {
 		tmp_dir=$(echo "${pkg_file}" | sed 's/.tar.gz$//')
 		mv -f "${tmp_dir}/sing-box" "${SING_BOX_BIN}"
 		chmod +x /usr/bin/sing-box
+		rm -f "${tmp_dir}*"
 		start_service
 		echo "sing-box updated to version $latest_ver"
 	else
@@ -397,7 +406,7 @@ update() {
 main() {
 	case "$1" in
 		start)
-			start_service
+			start_service "$2"
 			;;
 		stop)
 			stop_service
@@ -406,7 +415,7 @@ main() {
 			${SING_BOX_BIN} version
 			;;
 		sub | subscribe)
-			update_subscribe
+			update_subscribe "$2"
 			;;
 		update)
 			update
