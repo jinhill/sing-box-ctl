@@ -179,26 +179,8 @@
 				"outbound": "GLOBAL"
 			},
 			{
-				"ip_cidr": [
-					"192.168.0.0/16",
-					"10.8.0.0/24",
-					"fd00:1080::/64"
-				],
-				"outbound": "🏠回家"
-			},
-			{
-				"port": [
-					2200
-				],
-				"outbound": "🌍全球直连"
-			},
-			{
 				"domain_keyword": ["adobe"],
 				"action": "reject"
-			},
-			{
-				"domain_keyword": ["ecd.io", "iccb.cc"],
-				"outbound": "🌍全球直连"
 			},
 			{
 				"rule_set": "geosite-private",
