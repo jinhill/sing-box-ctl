@@ -240,7 +240,7 @@ setup_proxy_rule() {
 	ip rule add fwmark $PROXY_MARK table $PROXY_ROUTE_TABLE
 	ip -6 route add local default dev lo table $PROXY_ROUTE_TABLE
 	ip -6 rule add fwmark $PROXY_MARK table $PROXY_ROUTE_TABLE
-	if [ ! -f "${RULESET_FILE}" ]; then
+	if [ ! -f "${RULESET_FILE}" ] || [ "$1" = "1" ]; then
 		need_apply_nft=1
 		[ -d "${RULESET_FILE%/*}" ] || mkdir -p "${RULESET_FILE%/*}"
 		cat > "${RULESET_FILE}" << EOF
@@ -279,8 +279,8 @@ table inet sing-box {
 	
     # 绕过保留地址流量
     chain bypass_reserved {
-        meta nfproto ipv4 ip daddr @RESERVED_IPSET $RULE_COUNTER return comment "Bypass: IPv4 Reserved Address"
-        meta nfproto ipv6 ip6 daddr @RESERVED_IPSET_V6 $RULE_COUNTER return comment "Bypass: IPv6 Reserved Address"
+        meta nfproto ipv4 ip daddr @RESERVED_IPSET $RULE_COUNTER accept comment "Bypass: IPv4 Reserved Address"
+        meta nfproto ipv6 ip6 daddr @RESERVED_IPSET_V6 $RULE_COUNTER accept comment "Bypass: IPv6 Reserved Address"
     }
 
     # 局域网透明代理
@@ -292,8 +292,8 @@ table inet sing-box {
 
         # 劫持所有 DNS；DNS 请求比较多，TProxy 成本高，不建议使用；建议直接开一个 DNS-INBOUND
         udp dport 53 $RULE_COUNTER tproxy to :$TPROXY_PORT meta mark set $PROXY_MARK accept comment "Proxy: DNS(UDP) Hijack"
-		# 屏蔽http3 quic
-		udp dport { 80, 443 } reject comment "Reject http3 quic"
+        # 屏蔽http3 quic
+        udp dport { 80, 443 } reject comment "Reject http3 quic"
 
         # 绕过发往保留地址的流量
         jump bypass_reserved
