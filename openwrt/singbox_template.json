@@ -150,7 +150,8 @@
 		},
 		{
 			"tag": "🌍全球直连",
-			"type": "direct"
+			"type": "direct",
+			"connect_timeout": "5s"
 		}
 	],
 
