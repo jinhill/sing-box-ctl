@@ -5,11 +5,10 @@ Add-Type -AssemblyName System.Drawing
 $global:ProgressPreference = "SilentlyContinue"
 
 # 定义全局变量
-#$workDirectory = [System.IO.Path]::GetDirectoryName([System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName)
 $workDirectory = ".\"
 $appName = "Sing-Box Tray"
 $jobName = "SingBoxJob"
-$appPath = Join-Path $workDirectory "sing-box-latest.exe"
+$appPath = Join-Path $workDirectory "sing-box.exe"
 $configPath = Join-Path $workDirectory "config.json"
 $iconPathRunning = Join-Path $workDirectory "sing-box.ico"
 $iconPathStopped = Join-Path $workDirectory "sing-box-stop.ico"
@@ -18,7 +17,10 @@ $iconPathStopped = Join-Path $workDirectory "sing-box-stop.ico"
 function Get-Version {
     param([string]$source)
     if ($source -eq "local") {
-        return (& $appPath version).Split("`n")[0].Split(" ")[2]
+        if (Test-Path $appPath) {
+            return (& $appPath version).Split("`n")[0].Split(" ")[2]
+        }
+        return "0.0.0"
     } elseif ($source -eq "latest") {
         $apiUrl = "https://api.github.com/repos/SagerNet/sing-box/tags"
         $response = Invoke-WebRequest -Uri $apiUrl -UseBasicParsing -ErrorAction SilentlyContinue
@@ -36,19 +38,19 @@ function Compare-Version {
         [string]$remoteVersion
     )
 
-    # 去掉所有字母和横杠
-    $localVersion = $localVersion -replace '[a-zA-Z-]', ''
-    $remoteVersion = $remoteVersion -replace '[a-zA-Z-]', ''
+    return $localVersion -ne $remoteVersion
+}
 
-    # 转换为System.Version对象进行比较
-    $localVerObj = [System.Version]::Parse($localVersion)
-    $remoteVerObj = [System.Version]::Parse($remoteVersion)
+# 检查更新并提示
+function Check-For-Update {
+    $localVersion = Get-Version -source "local"
+    $latestVersion = Get-Version -source "latest"
+    if ($null -eq $latestVersion) {
+        return
+    }
 
-    # 比较版本号
-    if ($localVerObj -lt $remoteVerObj) {
-        return $true  # 本地版本较低
-    } else {
-        return $false # 本地版本较高或相同
+    if (Compare-Version $localVersion $latestVersion) {
+        [System.Windows.Forms.MessageBox]::Show("新版本可用 ($latestVersion)，当前版本: $localVersion", $appName)
     }
 }
 
@@ -67,12 +69,19 @@ function Update {
                 $downloadUrl = "https://github.com/SagerNet/sing-box/releases/download/v$latestVersion/sing-box-$latestVersion-windows-amd64.zip"
                 $zipFile = Join-Path $workDirectory "sing-box.zip"
                 Invoke-WebRequest -Uri $downloadUrl -OutFile $zipFile -ErrorAction Stop
-				
+                
                 JobAction -action "Stop"
+                
+                # Rename existing executable if it exists
+                if (Test-Path $appPath) {
+                    $backupPath = Join-Path $workDirectory "sing-box_$localVersion.exe"
+                    Rename-Item -Path $appPath -NewName $backupPath -Force
+                }
                 
                 $tempDir = Join-Path $workDirectory "temp"
                 Expand-Archive -Path $zipFile -DestinationPath $tempDir -Force -ErrorAction Stop
                 
+                # Copy and rename to sing-box.exe
                 Copy-Item -Path (Join-Path $tempDir "sing-box-$latestVersion-windows-amd64\sing-box.exe") -Destination $appPath -Force
                 
                 Remove-Item -Path $tempDir -Recurse -Force
@@ -90,12 +99,12 @@ function Update {
 # 服务操作
 function JobAction {
     param($action, $message)
-    $process = Get-Process -Name "sing-box-latest" -ErrorAction SilentlyContinue
+    $process = Get-Process -Name "sing-box" -ErrorAction SilentlyContinue  # Updated process name
     switch ($action) {
         "Start" {
             if ($process) {
                 Stop-Process -Id $process.Id -Force
-                Start-Sleep -Seconds 1 # Wait for 1 seconds
+                Start-Sleep -Seconds 1
             }
             Start-Process -FilePath $appPath -ArgumentList "run", "-c", $configPath, "-D", $workDirectory -WindowStyle Hidden
             if ($message) { [System.Windows.Forms.MessageBox]::Show($message, $appName) }
@@ -110,22 +119,20 @@ function JobAction {
     UpdateTrayAndMenu
 }
 
-# 定义一个函数来更新托盘图标和菜单项状态
+# 更新托盘图标和菜单项状态
 function UpdateTrayAndMenu {
-    $process = Get-Process -Name "sing-box-latest" -ErrorAction SilentlyContinue
+    $process = Get-Process -Name "sing-box" -ErrorAction SilentlyContinue  # Updated process name
     $iconPath = if ($process) { $iconPathRunning } else { $iconPathStopped }
     $notifyIcon.Icon = [System.Drawing.Icon]::new($iconPath)
     
-    $startItem = $contextMenu.Items | Where-Object {  $_.Text -eq "启动服务" -or $_.Text -eq "重启服务" }
+    $startItem = $contextMenu.Items | Where-Object { $_.Text -eq "启动服务" -or $_.Text -eq "重启服务" }
     $stopItem = $contextMenu.Items | Where-Object { $_.Text -eq "停止服务" }
     
     if ($process) {
-        # 如果服务正在运行
-		$startItem.Text = "重启服务"
+        $startItem.Text = "重启服务"
         $stopItem.Enabled = $true
     } else {
-        # 如果服务停止
-		$startItem.Text = "启动服务"
+        $startItem.Text = "启动服务"
         $stopItem.Enabled = $false
     }
 }
@@ -141,7 +148,6 @@ if ($processes.Count -ge 2) {
 
 # 创建托盘图标
 $notifyIcon = New-Object System.Windows.Forms.NotifyIcon
-# 初始化托盘图标
 $notifyIcon.Visible = $true
 $notifyIcon.Text = "$appName Control"
 
@@ -159,7 +165,7 @@ $contextMenu = New-Object System.Windows.Forms.ContextMenuStrip
     @{Text="控制面板"; Action={Start-Process "http://127.0.0.1:9095"}},
     @{Text="启动服务"; Action={JobAction -action "Start" -message "服务已启动"}},
     @{Text="停止服务"; Action={JobAction -action "Stop" -message "服务已停止"}},
-	@{Text="配置文件"; Action={
+    @{Text="配置文件"; Action={
         if (Test-Path $configPath) {
             Start-Process $configPath
         } else {
@@ -181,5 +187,5 @@ $contextMenu = New-Object System.Windows.Forms.ContextMenuStrip
 
 $notifyIcon.ContextMenuStrip = $contextMenu
 JobAction -action "Start"
-# 保持脚本运行以保持托盘图标可见
+Check-For-Update  # Check for updates on startup
 [System.Windows.Forms.Application]::Run()
