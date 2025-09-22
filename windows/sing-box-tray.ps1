@@ -13,6 +13,19 @@ $configPath = Join-Path $workDirectory "config.json"
 $iconPathRunning = Join-Path $workDirectory "sing-box.ico"
 $iconPathStopped = Join-Path $workDirectory "sing-box-stop.ico"
 
+# 托盘气泡提示函数
+function Show-NotifyTip {
+    param(
+        [string]$title,
+        [string]$message,
+        [System.Windows.Forms.ToolTipIcon]$icon = [System.Windows.Forms.ToolTipIcon]::Info
+    )
+    $notifyIcon.BalloonTipTitle = $title
+    $notifyIcon.BalloonTipText  = $message
+    $notifyIcon.BalloonTipIcon  = $icon
+    $notifyIcon.ShowBalloonTip(3000)  # 显示 3 秒
+}
+
 # 获取版本信息
 function Get-Version {
     param([string]$source)
@@ -31,17 +44,16 @@ function Get-Version {
     }
 }
 
-# 比较版本号，返回布尔值表示是否需要更新
+# 比较版本号
 function Compare-Version {
     param(
         [string]$localVersion,
         [string]$remoteVersion
     )
-
     return $localVersion -ne $remoteVersion
 }
 
-# 检查更新并提示
+# 检查更新
 function Check-For-Update {
     $localVersion = Get-Version -source "local"
     $latestVersion = Get-Version -source "latest"
@@ -50,7 +62,7 @@ function Check-For-Update {
     }
 
     if (Compare-Version $localVersion $latestVersion) {
-        [System.Windows.Forms.MessageBox]::Show("新版本可用 ($latestVersion)，当前版本: $localVersion", $appName)
+        Show-NotifyTip $appName "新版本可用 ($latestVersion)，当前版本: $localVersion"
     }
 }
 
@@ -59,47 +71,43 @@ function Update {
     $localVersion = Get-Version -source "local"
     $latestVersion = Get-Version -source "latest"
     if ($null -eq $latestVersion) {
-        [System.Windows.Forms.MessageBox]::Show("无法获取最新版本信息", $appName)
+        Show-NotifyTip $appName "无法获取最新版本信息" ([System.Windows.Forms.ToolTipIcon]::Error)
         return
     }
 
     if (Compare-Version $localVersion $latestVersion) {
-        if ([System.Windows.Forms.MessageBox]::Show("新版本可用 ($latestVersion)，是否要升级？", "更新提示", [System.Windows.Forms.MessageBoxButtons]::YesNo) -eq "Yes") {
-            try {
-                $downloadUrl = "https://github.com/SagerNet/sing-box/releases/download/v$latestVersion/sing-box-$latestVersion-windows-amd64.zip"
-                $zipFile = Join-Path $workDirectory "sing-box.zip"
-                Invoke-WebRequest -Uri $downloadUrl -OutFile $zipFile -ErrorAction Stop
-                
-                JobAction -action "Stop"
-                
-                # Rename existing executable if it exists
-                if (Test-Path $appPath) {
-                    $backupPath = Join-Path $workDirectory "sing-box_$localVersion.exe"
-                    Rename-Item -Path $appPath -NewName $backupPath -Force
-                }
-                
-                $tempDir = Join-Path $workDirectory "temp"
-                Expand-Archive -Path $zipFile -DestinationPath $tempDir -Force -ErrorAction Stop
-                
-                # Copy and rename to sing-box.exe
-                Copy-Item -Path (Join-Path $tempDir "sing-box-$latestVersion-windows-amd64\sing-box.exe") -Destination $appPath -Force
-                
-                Remove-Item -Path $tempDir -Recurse -Force
-                Remove-Item -Path $zipFile -Force
-                JobAction -action "Start" -message "服务已成功更新"
-            } catch {
-                [System.Windows.Forms.MessageBox]::Show("更新失败：$_", $appName)
+        Show-NotifyTip "更新提示" "正在升级到版本 $latestVersion..."
+        try {
+            $downloadUrl = "https://github.com/SagerNet/sing-box/releases/download/v$latestVersion/sing-box-$latestVersion-windows-amd64.zip"
+            $zipFile = Join-Path $workDirectory "sing-box.zip"
+            Invoke-WebRequest -Uri $downloadUrl -OutFile $zipFile -ErrorAction Stop
+
+            JobAction -action "Stop"
+
+            if (Test-Path $appPath) {
+                $backupPath = Join-Path $workDirectory "sing-box_$localVersion.exe"
+                Rename-Item -Path $appPath -NewName $backupPath -Force
             }
+
+            $tempDir = Join-Path $workDirectory "temp"
+            Expand-Archive -Path $zipFile -DestinationPath $tempDir -Force -ErrorAction Stop
+            Copy-Item -Path (Join-Path $tempDir "sing-box-$latestVersion-windows-amd64\sing-box.exe") -Destination $appPath -Force
+
+            Remove-Item -Path $tempDir -Recurse -Force
+            Remove-Item -Path $zipFile -Force
+            JobAction -action "Start" -message "服务已成功更新"
+        } catch {
+            Show-NotifyTip $appName "更新失败：$_" ([System.Windows.Forms.ToolTipIcon]::Error)
         }
     } else {
-        [System.Windows.Forms.MessageBox]::Show("当前版本: $localVersion, 已是最新", $appName)
+        Show-NotifyTip $appName "当前版本: $localVersion, 已是最新"
     }
 }
 
 # 服务操作
 function JobAction {
     param($action, $message)
-    $process = Get-Process -Name "sing-box" -ErrorAction SilentlyContinue  # Updated process name
+    $process = Get-Process -Name "sing-box" -ErrorAction SilentlyContinue
     switch ($action) {
         "Start" {
             if ($process) {
@@ -107,27 +115,27 @@ function JobAction {
                 Start-Sleep -Seconds 1
             }
             Start-Process -FilePath $appPath -ArgumentList "run", "-c", $configPath, "-D", $workDirectory -WindowStyle Hidden
-            if ($message) { [System.Windows.Forms.MessageBox]::Show($message, $appName) }
+            if ($message) { Show-NotifyTip $appName $message }
         }
         "Stop" {
             if ($process) {
                 Stop-Process -Id $process.Id -Force
-                if ($message) { [System.Windows.Forms.MessageBox]::Show($message, $appName) }
+                if ($message) { Show-NotifyTip $appName $message }
             }
         }
     }
     UpdateTrayAndMenu
 }
 
-# 更新托盘图标和菜单项状态
+# 更新托盘图标和菜单
 function UpdateTrayAndMenu {
-    $process = Get-Process -Name "sing-box" -ErrorAction SilentlyContinue  # Updated process name
+    $process = Get-Process -Name "sing-box" -ErrorAction SilentlyContinue
     $iconPath = if ($process) { $iconPathRunning } else { $iconPathStopped }
     $notifyIcon.Icon = [System.Drawing.Icon]::new($iconPath)
-    
+
     $startItem = $contextMenu.Items | Where-Object { $_.Text -eq "启动服务" -or $_.Text -eq "重启服务" }
     $stopItem = $contextMenu.Items | Where-Object { $_.Text -eq "停止服务" }
-    
+
     if ($process) {
         $startItem.Text = "重启服务"
         $stopItem.Enabled = $true
@@ -137,10 +145,8 @@ function UpdateTrayAndMenu {
     }
 }
 
-# 获取当前脚本的进程名
+# 获取当前脚本的进程名，防止多开
 $currentProcessName = [System.Diagnostics.Process]::GetCurrentProcess().ProcessName
-
-# 检查是否有两个或以上的进程在运行
 $processes = Get-Process -Name $currentProcessName -ErrorAction SilentlyContinue
 if ($processes.Count -ge 2) {
     exit
@@ -151,7 +157,7 @@ $notifyIcon = New-Object System.Windows.Forms.NotifyIcon
 $notifyIcon.Visible = $true
 $notifyIcon.Text = "$appName Control"
 
-# 添加鼠标点击事件处理
+# 左键单击打开控制面板
 $notifyIcon.Add_MouseClick({
     param($sender, $e)
     if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
@@ -159,7 +165,7 @@ $notifyIcon.Add_MouseClick({
     }
 })
 
-# 创建上下文菜单
+# 创建右键菜单
 $contextMenu = New-Object System.Windows.Forms.ContextMenuStrip
 @(
     @{Text="控制面板"; Action={Start-Process "http://127.0.0.1:9095"}},
@@ -169,7 +175,7 @@ $contextMenu = New-Object System.Windows.Forms.ContextMenuStrip
         if (Test-Path $configPath) {
             Start-Process $configPath
         } else {
-            [System.Windows.Forms.MessageBox]::Show("配置文件不存在。", "错误", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
+            Show-NotifyTip "错误" "配置文件不存在。" ([System.Windows.Forms.ToolTipIcon]::Error)
         }
     }},
     @{Text="检查更新"; Action={Update}},
@@ -187,5 +193,5 @@ $contextMenu = New-Object System.Windows.Forms.ContextMenuStrip
 
 $notifyIcon.ContextMenuStrip = $contextMenu
 JobAction -action "Start"
-Check-For-Update  # Check for updates on startup
+Check-For-Update
 [System.Windows.Forms.Application]::Run()
