@@ -386,6 +386,9 @@ update() {
 	if [ "$latest_ver" != "$local_ver" ]; then
 		log "New version available: $latest_ver"
 		log "Start downloading..."
+		# for openwrt: xxx_openwrt_x86_64.ipk
+		# opkg install kmod-inet-diag kmod-tun kmod-nfnetlink-queue kmod-nft-queue
+		# opkg install xxx_openwrt_x86_64.ipk
 		latest_url="https://github.com/SagerNet/sing-box/releases/download/v${latest_ver}/sing-box-${latest_ver}-linux-amd64.tar.gz"
 		pkg_file="/tmp/${latest_url##*/}"
 		download "$latest_url" "${pkg_file}" || handle_error "Failed to download latest package"
