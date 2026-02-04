@@ -1,5 +1,5 @@
 #!/bin/sh
-# depend on: curl nft ip ping netstat jq coreutils-base64
+# depend on: curl nft ip ping netstat jq coreutils-base64 kmod-tun kmod-nf-tproxy
 # xray/v2ray url格式节点订阅链接
 SUBSCRIBE_URL=""
 # sing-box 配置模板文件
@@ -387,7 +387,7 @@ update() {
 		log "New version available: $latest_ver"
 		log "Start downloading..."
 		# for openwrt: xxx_openwrt_x86_64.ipk
-		# opkg install kmod-inet-diag kmod-tun kmod-nfnetlink-queue kmod-nft-queue
+		# opkg install kmod-inet-diag kmod-tun kmod-nfnetlink-queue kmod-nft-queue kmod-nf-tproxy
 		# opkg install xxx_openwrt_x86_64.ipk
 		latest_url="https://github.com/SagerNet/sing-box/releases/download/v${latest_ver}/sing-box-${latest_ver}-linux-amd64.tar.gz"
 		pkg_file="/tmp/${latest_url##*/}"
