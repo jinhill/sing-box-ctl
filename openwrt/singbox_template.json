@@ -84,6 +84,7 @@
 
   "route": {
     "auto_detect_interface": true,
+    "default_mark": 255,
     "final": "🐟漏网之鱼",
     "default_domain_resolver": "dns_direct",
     "rules": [
