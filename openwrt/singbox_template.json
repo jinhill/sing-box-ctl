@@ -37,17 +37,12 @@
   },
 
   "inbounds": [
-    {
-      "type": "tun",
-      "tag": "tun-in",
-      "mtu": 9000,
-      "auto_route": true,
-      "strict_route": true,
-      "stack": "system",
-      "address": [
-        "172.18.0.1/30",
-        "fd00:172:18::1/126"
-      ],
+      {
+        "type": "tproxy",
+        "tag": "tproxy-in",
+        "listen": "::",
+        "listen_port": 7895
+      },
       "platform": {
         "http_proxy": {
           "enabled": true,
