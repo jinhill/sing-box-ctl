@@ -37,19 +37,11 @@
   },
 
   "inbounds": [
-      {
-        "type": "tproxy",
-        "tag": "tproxy-in",
-        "listen": "::",
-        "listen_port": 7895
-      },
-      "platform": {
-        "http_proxy": {
-          "enabled": true,
-          "server": "127.0.0.1",
-          "server_port": 1080
-        }
-      }
+   {
+      "type": "tproxy",
+      "tag": "tproxy-in",
+      "listen": "::",
+      "listen_port": 7895
     },
     {
       "type": "mixed",
